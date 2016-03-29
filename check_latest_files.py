@@ -1,10 +1,14 @@
 #!/usr/bin/python
+""" Uses python 2.x """
 
 import os
 import sys
 import datetime
 import time
 import argparse
+
+import json
+import requests
 
 parser = argparse.ArgumentParser(prog='check_latest_files', description='Verifica cuando fue la ultima creacion de un archivo', 
     epilog='Uso: check_latest_files --path "c:\windows" --seconds 300')
@@ -15,6 +19,7 @@ parser.add_argument('-d', dest='debug', help='Habilita el modo debug', action='s
 parser.add_argument('--snmp', dest='snmp', help='Retorna un valor para ser leido por snmp. No envia alertas por mail', action='store_true', required=False)
 
 args = parser.parse_args()
+filelist = []
 
 try:
 	if os.path.isdir(args.path):
@@ -51,8 +56,15 @@ try:
 
 				# send an alert by email
 				if not args.snmp:
-					print "aca deberia mandar un mail"
-
+					filelist.append(filename)
+					#print "aca deberia mandar un mail"
+		if len(filelist)>0:
+			cmd = "c:\scripts\smtp-client.py "\
+						"--smtp-host smtp.gmail.com --smtp-user <user> --smtp-port 587 --smtp-usetls "\
+						"--msg-mailfrom <from-address> --msg-namefrom <from-name> --msg-subject '<subject>' "\
+						"--smtp-pass '<password>' "\
+						"--msg-to <to> --msg-body '%s'" %('<br>'.join(filelist))
+			os.system(cmd)
 
 		# return 0 condition unmatch
 		if args.snmp:
