@@ -6,9 +6,11 @@ import sys
 import datetime
 import time
 import argparse
-
-import json
-import requests
+import smtplib
+from email.mime.application import MIMEApplication
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.utils import COMMASPACE, formatdate
 
 parser = argparse.ArgumentParser(prog='check_latest_files', description='Verifica cuando fue la ultima creacion de un archivo', 
     epilog='Uso: check_latest_files --path "c:\windows" --seconds 300')
@@ -22,55 +24,70 @@ args = parser.parse_args()
 filelist = []
 
 try:
-	if os.path.isdir(args.path):
-		for filename in os.listdir(args.path):
-			full_path = args.path + '/' + filename if os.name=="posix" else args.path + '\\' + filename
-			ctime = os.stat(full_path).st_ctime # file creation time format timestamp 1457381538.0
-			file_creation_time = datetime.datetime.fromtimestamp(int(ctime)).strftime('%Y-%m-%d %H:%M:%S') # format %Y-%m-%d %H:%M:%S
-			today_in_timestamp = time.time() 
-			timedelta = datetime.datetime.fromtimestamp(time.time()) - datetime.datetime.fromtimestamp(int(ctime))
+    if os.path.isdir(args.path):
+        for filename in os.listdir(args.path):
+            full_path = args.path + '/' + filename if os.name=="posix" else args.path + '\\' + filename
+            ctime = os.stat(full_path).st_ctime # file creation time format timestamp 1457381538.0
+            file_creation_time = datetime.datetime.fromtimestamp(int(ctime)).strftime('%Y-%m-%d %H:%M:%S') # format %Y-%m-%d %H:%M:%S
+            today_in_timestamp = time.time() 
+            timedelta = datetime.datetime.fromtimestamp(time.time()) - datetime.datetime.fromtimestamp(int(ctime))
 
-			# debug mode ON
-			if args.debug and not args.snmp:
-				print "ctime: %s" %ctime
-				print "full_path: %s" %full_path
-				print "filename: %s" %filename
-				print "file creation time: %s" %file_creation_time
-				print "now(): %s" %datetime.datetime.now()
-				print "time.time(): %s" %time.time()
-				print "from timestamp obj: %s" %datetime.datetime.fromtimestamp(int(ctime))
-				print "timedelta: %s" %timedelta
-				print "timedelta seconds: %s" %timedelta.seconds
-				print "timedelta minutes: %s" %(timedelta.seconds/60)
-				print "*"*200
+            # debug mode ON
+            if args.debug and not args.snmp:
+                print "ctime: %s" %ctime
+                print "full_path: %s" %full_path
+                print "filename: %s" %filename
+                print "file creation time: %s" %file_creation_time
+                print "now(): %s" %datetime.datetime.now()
+                print "time.time(): %s" %time.time()
+                print "from timestamp obj: %s" %datetime.datetime.fromtimestamp(int(ctime))
+                print "timedelta: %s" %timedelta
+                print "timedelta seconds: %s" %timedelta.seconds
+                print "timedelta minutes: %s" %(timedelta.seconds/60)
+                print "*"*200
 
-			# alert if the time was exceeded
-			if timedelta.seconds>args.seconds:
-				if args.debug and not args.snmp:
-					print "%s exceeded time of [%s] seconds with total of [%s] seconds" %(filename,args.seconds,timedelta.seconds)
+            # alert if the time was exceeded
+            if timedelta.seconds>args.seconds:
+                if args.debug and not args.snmp:
+                    print "%s exceeded time of [%s] seconds with total of [%s] seconds" %(filename,args.seconds,timedelta.seconds)
 
-				# if snmp return 1 condition match
-				if args.snmp:
-					print 1
-					sys.exit(0)
+                # if snmp return 1 condition match
+                if args.snmp:
+                    print 1
+                    sys.exit(0)
 
-				# send an alert by email
-				if not args.snmp:
-					filelist.append(filename)
-					#print "aca deberia mandar un mail"
-		if len(filelist)>0:
-			cmd = "c:\scripts\smtp-client.py "\
-						"--smtp-host smtp.gmail.com --smtp-user <user> --smtp-port 587 --smtp-usetls "\
-						"--msg-mailfrom <from-address> --msg-namefrom <from-name> --msg-subject '<subject>' "\
-						"--smtp-pass '<password>' "\
-						"--msg-to <to> --msg-body '%s'" %('<br>'.join(filelist))
-			os.system(cmd)
+                # send an alert by email
+                if not args.snmp:
+                    filelist.append(filename)
+        
+        if len(filelist)>0:
+            try:
+                # smtp session
+                smtpsession = smtplib.SMTP("smtp.gmail.com", 587)
+                smtpsession.ehlo()
+                smtpsession.starttls()
+                smtpsession.login("", "")
+                # create headers
+                Headers = []
+                Headers.append("from: ")
+                Headers.append("to: ")
+                Headers.append("subject: 'Problemas en la interface '")
+                Headers.append("mime-version: 1.0")
+                Headers.append("content-type: text/html")
+                Headers = '\r\n'.join(Headers)
+                # create content
+                Content = Headers + '\r\n\r\n' + "%s" %('<br>'.join(filelist))
+                # send the email
+                smtpsession.sendmail('', '', Content)
+            except smtplib.SMTPDataError as e:
+                print e
 
-		# return 0 condition unmatch
-		if args.snmp:
-			print 0
-			sys.exit(0)
+
+        # return 0 condition unmatch
+        if args.snmp:
+            print 0
+            sys.exit(0)
 
 except Exception as e:
-	print e
-	pass
+    print e
+    pass
